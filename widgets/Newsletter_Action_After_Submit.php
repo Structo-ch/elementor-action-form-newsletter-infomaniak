@@ -1,195 +1,101 @@
 <?php
 
-namespace CS_Posts;
-/**
- * Class Infomaniak_Action_After_Submit
- * @see https://developers.elementor.com/custom-form-action/
- * Custom elementor form action after submit to add a subsciber to
- * Infomaniak list via API
- */
-class Newsletter_Action_After_Submit extends \ElementorPro\Modules\Forms\Classes\Action_Base {
-	/**
-	 * Get Name
-	 *
-	 * Return the action name
-	 *
-	 * @access public
-	 * @return string
-	 */
-	public function get_name() {
-		return 'Newsletter';
-	}
+namespace InfomaniakNewsletter;
 
-	/**
-	 * Get Label
-	 *
-	 * Returns the action label
-	 *
-	 * @access public
-	 * @return string
-	 */
-	public function get_label() {
-		return __( 'Newsletter', 'text-domain' );
-	}
+use ElementorPro\Modules\Forms\Classes\Action_Base;
+use WP_Error;
 
-	/**
-	 * Run
-	 *
-	 * Runs the action after submit
-	 *
-	 * @access public
-	 * @param \ElementorPro\Modules\Forms\Classes\Form_Record $record
-	 * @param \ElementorPro\Modules\Forms\Classes\Ajax_Handler $ajax_handler
-	 */
-	public function run( $record, $ajax_handler ) {
-		$settings = $record->get( 'form_settings' );
-
-		//  Make sure that there is a Infomaniak installation url
-		if ( empty( $settings['infomaniak_url'] ) ) {
-			return;
-		}
-
-		//  Make sure that there is a Infomaniak list ID
-		if ( empty( $settings['infomaniak_list'] ) ) {
-			return;
-		}
-
-		// Make sure that there is a Infomaniak Email field ID
-		// which is required by Infomaniak's API to subsribe a user
-		if ( empty( $settings['infomaniak_email_field'] ) ) {
-			return;
-		}
-
-		// Get sumitetd Form data
-		$raw_fields = $record->get( 'fields' );
-
-		// Normalize the Form Data
-		$fields = [];
-		foreach ( $raw_fields as $id => $field ) {
-			$fields[ $id ] = $field['value'];
-		}
-
-		// Make sure that the user emtered an email
-		// which is required by Infomaniak's API to subsribe a user
-		if ( empty( $fields[ $settings['infomaniak_email_field'] ] ) ) {
-			return;
-		}
-
-    //  Make sure that there is a Infomaniak installation url
-    if ( empty( $fields[ $settings['infomaniak_validator_field'] ] ) ) {
-      return;
+class Newsletter_Action_After_Submit extends Action_Base {
+    public function get_name() {
+        return 'newsletter';
     }
 
-		// If we got this far we can start building our request data
-		// Based on the param list at https://newsletter.infomaniak.com/accounts/access-token
-		$infomaniak_data = [
-			'email' => $fields[ $settings['infomaniak_email_field'] ]
-		];
+    public function get_label() {
+        return __('Newsletter Infomaniak', 'elementor-newsletter-infomaniak');
+    }
 
-		// Send the request
-		$response = wp_remote_post( $settings['infomaniak_url'] . $settings['infomaniak_list'] . '/importcontact', [
-			'body' => [
-  			'contacts' => $infomaniak_data
-      ],
-      'headers' => array(
-        'Authorization' => 'Basic ' . base64_encode( $settings['username'] . ':' . $settings['secret']  ),
-      )
-		] );
-	}
+    public function run($record, $ajax_handler) {
+        $settings = $record->get('form_settings');
+        $raw_fields = $record->get('fields');
+        $fields = array_map(fn($field) => $field['value'], $raw_fields);
 
-	/**
-	 * Register Settings Section
-	 *
-	 * Registers the Action controls
-	 *
-	 * @access public
-	 * @param \Elementor\Widget_Base $widget
-	 */
-	public function register_settings_section( $widget ) {
-		$widget->start_controls_section(
-			'section_infomaniak',
-			[
-				'label' => __( 'Infomaniak', 'text-domain' ),
-				'condition' => [
-					'submit_actions' => $this->get_name(),
-				],
-			]
-		);
+        if (!$this->validate_settings($settings, $fields)) {
+            return;
+        }
 
-		$widget->add_control(
-			'infomaniak_url',
-			[
-				'label' => __( 'Infomaniak URL', 'text-domain' ),
-				'type' => \Elementor\Controls_Manager::TEXT,
-				'placeholder' => 'https://newsletter.infomaniak.com/api/v1/public/mailinglist/',
-				'label_block' => true,
-				'separator' => 'before',
-				'description' => __( 'Enter the URL where you have Infomaniak installed', 'text-domain' ),
-			]
-		);
-		$widget->add_control(
-			'username',
-			[
-				'label' => __( 'Clé API', 'text-domain' ),
-				'type' => \Elementor\Controls_Manager::TEXT,
-				'placeholder' => '',
-				'label_block' => true,
-				'description' => __( 'Enter the key api where you have Infomaniak installed (ex : https://newsletter.infomaniak.com/api/v1/public/mailinglist/)', 'text-domain' ),
-			]
-		);
-		$widget->add_control(
-			'secret',
-			[
-				'label' => __( 'Clé secrète', 'text-domain' ),
-				'type' => \Elementor\Controls_Manager::TEXT,
-				'placeholder' => '',
-				'label_block' => true,
-				'separator' => 'after',
-				'description' => __( 'Enter the secret api where you have Infomaniak installed', 'text-domain' ),
-			]
-		);
+        $this->send_to_infomaniak($settings, $fields);
+    }
 
-		$widget->add_control(
-			'infomaniak_list',
-			[
-				'label' => __( 'Infomaniak List ID', 'text-domain' ),
-				'type' => \Elementor\Controls_Manager::TEXT,
-				'separator' => 'before',
-				'description' => __( 'the list id you want to subscribe a user to. This encrypted & hashed id can be found under View all lists section named ID.', 'text-domain' ),
-			]
-		);
+    private function validate_settings($settings, $fields) {
+        $required_keys = ['infomaniak_domain', 'infomaniak_email_field', 'api_token'];
+        
+        foreach ($required_keys as $key) {
+            if (empty($settings[$key])) {
+                return false;
+            }
+        }
 
-		$widget->add_control(
-			'infomaniak_email_field',
-			[
-				'label' => __( 'Email Field ID', 'text-domain' ),
-				'type' => \Elementor\Controls_Manager::TEXT,
-			]
-		);
+        return !empty($fields[$settings['infomaniak_email_field']]);
+    }
 
-		$widget->add_control(
-			'infomaniak_validator_field',
-			[
-				'label' => __( 'Name Field validator', 'text-domain' ),
-				'type' => \Elementor\Controls_Manager::TEXT,
-			]
-		);
+    private function send_to_infomaniak($settings, $fields) {
+        $api_url = "https://api.infomaniak.com/1/newsletters/{$settings['infomaniak_domain']}/subscribers";
+        $email = $fields[$settings['infomaniak_email_field']];
 
-		$widget->end_controls_section();
-	}
+        $body = [
+            'email' => $email,
+            'fields' => [],
+            'groups' => isset($settings['infomaniak_groups']) ? explode(',', $settings['infomaniak_groups']) : []
+        ];
 
-	/**
-	 * On Export
-	 *
-	 * Clears form settings on export
-	 * @access Public
-	 * @param array $element
-	 */
-	public function on_export( $element ) {
-		unset(
-			$element['infomaniak_url'],
-			$element['infomaniak_list'],
-			$element['infomaniak_email_field']
-		);
-	}
+        if (!empty($settings['infomaniak_firstname_field']) && !empty($fields[$settings['infomaniak_firstname_field']])) {
+            $body['fields']['firstname'] = $fields[$settings['infomaniak_firstname_field']];
+        }
+        
+        if (!empty($settings['infomaniak_lastname_field']) && !empty($fields[$settings['infomaniak_lastname_field']])) {
+            $body['fields']['lastname'] = $fields[$settings['infomaniak_lastname_field']];
+        }
+
+        $response = wp_remote_post($api_url, [
+            'body' => json_encode($body),
+            'headers' => [
+                'Authorization' => 'Bearer ' . $settings['api_token'],
+                'Content-Type'  => 'application/json'
+            ]
+        ]);
+
+        if (is_wp_error($response)) {
+            error_log('Erreur API Infomaniak : ' . $response->get_error_message());
+        }
+    }
+
+    public function register_settings_section($widget) {
+        $widget->start_controls_section('section_infomaniak', [
+            'label' => __('Infomaniak', 'elementor-newsletter-infomaniak'),
+            'condition' => ['submit_actions' => $this->get_name()],
+        ]);
+
+        $controls = [
+            'infomaniak_domain' => __('ID du Domaine', 'elementor-newsletter-infomaniak'),
+            'api_token' => __('Token API', 'elementor-newsletter-infomaniak'),
+            'infomaniak_email_field' => __('Champ Email', 'elementor-newsletter-infomaniak'),
+            'infomaniak_firstname_field' => __('Champ Prénom', 'elementor-newsletter-infomaniak'),
+            'infomaniak_lastname_field' => __('Champ Nom', 'elementor-newsletter-infomaniak'),
+            'infomaniak_groups' => __('Groupes (séparés par une virgule)', 'elementor-newsletter-infomaniak'),
+        ];
+
+        foreach ($controls as $name => $label) {
+            $widget->add_control($name, [
+                'label' => $label,
+                'type' => \Elementor\Controls_Manager::TEXT,
+                'label_block' => true,
+            ]);
+        }
+
+        $widget->end_controls_section();
+    }
+
+    public function on_export($element) {
+        unset($element['api_token']);
+    }
 }

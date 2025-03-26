@@ -1,45 +1,39 @@
 <?php
 /**
- * Plugin Name: elementor-action-form-newsletter-infomaniak
- * Description:
+ * Plugin Name: Elementor Action Form Newsletter Infomaniak
+ * Description: Ajoute une action sur les formulaires Elementor pour s’abonner à une newsletter Infomaniak.
  * Plugin URI:
  * Author: Eric Monnier
- * Version: 0.1
+ * Version: 0.3
  * Author URI:
- *
  * Text Domain: elementor-action-form-newsletter-infomaniak
-*/
+ */
 
+if (!defined('ABSPATH')) exit; // Sécurité
 
-if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
-
-define( 'ELEMENTOR_ADD_VIEW__FILE__', __FILE__ );
+define('ELEMENTOR_NEWSLETTER_INFOMANIAK__FILE__', __FILE__);
+define('ELEMENTOR_NEWSLETTER_INFOMANIAK__DIR__', plugin_dir_path(__FILE__));
 
 /**
- * Load Hello World
- *
- * Load the plugin after Elementor (and other plugins) are loaded.
- *
- * @since 1.0.0
+ * Charge le plugin après Elementor
  */
-function elementor_add_view_load() {
-	// Load localization file
-	load_plugin_textdomain( 'add-newsletter-infomaniak-elementor' );
+function elementor_newsletter_infomaniak_load() {
+    load_plugin_textdomain('elementor-newsletter-infomaniak');
 
-	// Notice if the Elementor is not active
-	if ( ! did_action( 'elementor/loaded' ) ) {
-		add_action( 'admin_notices', 'elementor_add_view_fail_load' );
-		return;
-	}
+    if (!did_action('elementor/loaded')) {
+        add_action('admin_notices', function() {
+            echo '<div class="error"><p>' . esc_html__('Elementor doit être activé pour utiliser ce plugin.', 'elementor-newsletter-infomaniak') . '</p></div>';
+        });
+        return;
+    }
 
-	// Check version required
-	$elementor_pro_version_required = '1.7.2';
-	if ( ! version_compare( ELEMENTOR_PRO_VERSION, $elementor_pro_version_required, '>=' ) ) {
-		add_action( 'admin_notices', 'elementor_add_view_fail_load_out_of_date' );
-		return;
-	}
+    if (!defined('ELEMENTOR_PRO_VERSION') || version_compare(ELEMENTOR_PRO_VERSION, '1.7.2', '<')) {
+        add_action('admin_notices', function() {
+            echo '<div class="error"><p>' . esc_html__('Elementor Pro 1.7.2+ est requis.', 'elementor-newsletter-infomaniak') . '</p></div>';
+        });
+        return;
+    }
 
-	// Require the main plugin file
-	require( __DIR__ . '/plugin.php' );
+    require ELEMENTOR_NEWSLETTER_INFOMANIAK__DIR__ . 'plugin.php';
 }
-add_action( 'plugins_loaded', 'elementor_add_view_load' );
+add_action('plugins_loaded', 'elementor_newsletter_infomaniak_load');
